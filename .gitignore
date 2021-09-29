@@ -1,0 +1,8 @@
+/.vscode
+/*.inp
+/*.mol
+/subprocess_test.py
+/test_args.py
+/test.py
+/test_input.py
+/sphere_random.xyz
