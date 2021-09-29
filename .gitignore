@@ -1,7 +1,7 @@
-/vscode
+/.vscode
 /*.inp
 /*.mol
-/subprocees_test.py
+/subprocess_test.py
 /test_args.py
 /test.py
 /test_input.py
