@@ -1,8 +1,8 @@
-.vscode
-./*.inp
-./*.mol
-./subprocees_test.py
-./test_args.py
-./test.py
-./test_input.py
-./sphere_randon.xyz
+/vscode
+/*.inp
+/*.mol
+/subprocees_test.py
+/test_args.py
+/test.py
+/test_input.py
+/sphere_randon.xyz
