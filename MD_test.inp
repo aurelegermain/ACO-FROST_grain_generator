@@ -1,0 +1,6 @@
+$md
+   temp=10 # in K
+   time=1
+   dump=25
+   step=  1.0  # in fs
+$end
