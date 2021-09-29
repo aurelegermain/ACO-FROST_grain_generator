@@ -45,7 +45,7 @@ if High_method_and_cycle is not None:
     High_method = str(High_method_and_cycle[0])
     High_cycle = int(High_method_and_cycle[1])
 
-distance = 2.5
+distance = 1.5
 coeff_min = 1.00
 coeff_max = 1.2
 steps = 0.1
@@ -53,7 +53,7 @@ steps = 0.1
 check_surface = False
 final_gfn2 = False
 
-if agermain2021 is not None:
+if agermain2021 is not False:
     check_surface = True
     final_gfn2 = True
     MD_method_and_cycle = 0
@@ -64,12 +64,34 @@ if agermain2021 is not None:
     High_cycle = 100
     gfn = 'ff'
     mol = 'H2O'
+    file_md_inp = open('MD.inp', 'w')
+    print('$md\n   temp=10 # in K\n   time=1\n   dump=25\n   step=  1.0  # in fs\n$end',file=file_md_inp)
+    file_md_inp.close()
     
 
 if check_surface == True:
     nbr_final_gfn2 = 0
     nbr_single_hb = 0
     nbr_mol_attrib_problem = 0
+
+if input_file is not None:
+
+    with open(input_file , "rt") as myfile:
+        output = myfile.read()
+
+    try:    
+        start_string="$building"
+        end_string="$end" 
+        start = output.index(start_string) + len(start_string)
+        end = output.index(end_string, start)
+        input_building = output[start:end].strip().split()
+        input_building = np.reshape(input_building,(-1,2))
+    except:
+        input_building = None
+    
+    if input_building is not None:
+        list_mol = deepcopy(input_building[1:,:])
+        size = np.sum(list_mol[:,1].astype(int))
 
 def FromXYZtoDataframeMolecule(input_file):
     #read and encode .xyz fiel into Pandas Dataframe
@@ -220,7 +242,7 @@ def molecule_positioning_simplified(atoms, name_atom_added):
     
     i = 0
     while np.amin(distances_ab(atoms2, atoms)) > distance * coeff_max or np.amin(distances_ab(atoms2, atoms)) < distance / coeff_min:
-        print(i)
+        #print(i)
         if np.amin(distances_ab(atoms2, atoms)) > distance * coeff_max:
             i = i - 1
         else:
@@ -490,10 +512,35 @@ def check_surface_agermain2021(atoms, i, nbr_mol, nbr_final_gfn2, nbr_mol_attrib
         return atoms_return, i, nbr_final_gfn2, nbr_mol_attrib_problem, nbr_single_hb
     return atoms, i, nbr_final_gfn2, nbr_mol_attrib_problem, nbr_single_hb
 
-if os.path.isdir('./' + mol + '_gfn' + gfn + '/') is False:
+def molecule_csv(mol):
+    df = pd.read_csv('molecules_reactivity_network.csv', sep='\t')
+    atoms = io.read(df.loc[df['species'] == mol, 'pwd_xyz'].values[0]) 
+    return atoms
+
+if input_file is not None:
+    for i in range(len(list_mol)):
+        if os.path.isdir('./' + list_mol[i,0] + '_gfn' + gfn + '/') is False:
+            mol = list_mol[i,0]
+            #make a directory with the name of the molecule + _xtb. To store the xtb files of the molecule to sample
+            subprocess.call(['mkdir', mol + '_gfn' + gfn + ''])
+            io.write('./' + mol + '_gfn' + gfn + '/' + mol + '_inp.xyz', molecule_csv(mol))
+            process = subprocess.Popen(['xtb', mol + '_inp.xyz', '--opt', 'extreme', '--gfn' + gfn, '--verbose'], cwd='./' + mol + '_gfn' + gfn, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+            stdout, stderr = process.communicate()
+            output = open("./" + mol + "_gfn" + gfn + "/output", "w")
+            print(stdout.decode(), file=output)
+            print(stderr.decode(), file=output)   
+            output.close()
+            subprocess.call(['mv', './' + mol + '_gfn' + gfn + '/xtbopt.xyz', './' + mol + '_gfn' + gfn + '/' + mol + '.xyz'])
+            process = subprocess.Popen(['xtb', mol + '.xyz', '--hess', '--gfn' + gfn, '--verbose'], cwd='./'  + mol + '_gfn' + gfn + '/', stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+            stdout, stderr = process.communicate()
+            output = open("./" + mol + "_gfn" + gfn + "/frequencies", "w")
+            print(stdout.decode(), file=output)
+            print(stderr.decode(), file=output)   
+            output.close()
+elif os.path.isdir('./' + mol + '_gfn' + gfn + '/') is False:
     #make a directory with the name of the molecule + _xtb. To store the xtb files of the molecule to sample
     subprocess.call(['mkdir', mol + '_gfn' + gfn + ''])
-    io.write('./' + mol + '_gfn' + gfn + '/' + mol + '_inp.xyz', molecule(mol))
+    io.write('./' + mol + '_gfn' + gfn + '/' + mol + '_inp.xyz', molecule_csv(mol))
     process = subprocess.Popen(['xtb', mol + '_inp.xyz', '--opt', 'extreme', '--gfn' + gfn, '--verbose'], cwd='./' + mol + '_gfn' + gfn, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
     stdout, stderr = process.communicate()
     output = open("./" + mol + "_gfn" + gfn + "/output", "w")
@@ -521,7 +568,23 @@ if restart is not None:
     else:
         atoms = io.read('./' + str(restart - 1) + '/xtbopt.xyz') 
 else:
-    atoms = io.read('./' + mol + '_gfn' + gfn + '/' + mol + '.xyz') 
+    if input_building is not None:
+        if input_building[0,1] == 'random':
+            list_weight = list_mol[:,1].astype(int)/np.sum(list_mol[:,1].astype(int))
+            random_mol = np.random.choice(len(list_mol[:,:]),1, p=list_weight)
+            mol = list_mol[random_mol,0][0]
+            list_mol[random_mol,1] = str(int(list_mol[random_mol,1]) - 1)
+        else:
+            for l in range(len(list_mol)):
+                print(l)
+                if int(list_mol[l,1]) !=0:
+                    mol = list_mol[l,0]
+                    print(mol)
+                    list_mol[l,1] = str(int(list_mol[l,1]) - 1)
+                    break
+        atoms = io.read('./' + mol + '_gfn' + gfn + '/' + mol + '.xyz')
+    else:
+        atoms = io.read('./' + mol + '_gfn' + gfn + '/' + mol + '.xyz') 
 
 i = 2
 while i <= size:
@@ -529,7 +592,21 @@ while i <= size:
         if i < restart:
             i +=1
             continue
-    
+    if input_building is not None:
+        if input_building[0,1] == 'random':
+            list_weight = list_mol[:,1].astype(int)/np.sum(list_mol[:,1].astype(int))
+            random_mol = np.random.choice(len(list_mol[:,:]),1, p=list_weight)
+            mol = list_mol[random_mol,0][0]
+            print(mol)
+            print(list_weight)
+            list_mol[random_mol,1] = str(int(list_mol[random_mol,1]) - 1)
+        else:
+            for l in range(len(list_mol)):
+                if int(list_mol[l,1]) !=0:
+                    mol = list_mol[l,0]
+                    list_mol[l,1] = str(int(list_mol[l,1]) - 1)
+                    break
+
     atoms2 = molecule_positioning_simplified(atoms, mol)
     atoms = atoms + atoms2
     
@@ -635,8 +712,8 @@ while i <= size:
         atoms, i, nbr_final_gfn2, nbr_mol_attrib_problem, nbr_single_hb = check_surface_agermain2021(atoms, i, size, nbr_final_gfn2, nbr_mol_attrib_problem, nbr_single_hb)
 
     i += 1
-    print("i fin boucle " + str(i))
-    print("size " + str(size))
+    #print("i fin boucle " + str(i))
+    #print("size " + str(size))
 
 
 io.write('./sphere.xyz', atoms)
