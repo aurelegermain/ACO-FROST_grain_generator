@@ -6,3 +6,8 @@
 /test.py
 /test_input.py
 /sphere_random.xyz
+/cluster.xyz
+/movie.xyz
+/sphere*
+/xtbopt.xyz
+/.~lock.molecules_reactivity_network.csv#
