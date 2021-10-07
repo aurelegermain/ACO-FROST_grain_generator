@@ -8,6 +8,7 @@ from ase.build import molecule
 from ase.data.pubchem import pubchem_atoms_search, pubchem_atoms_conformer_search
 import argparse
 import os
+import sys
 import math
 
 rng =np.random.default_rng()
@@ -568,26 +569,28 @@ def molecule_csv(mol):
 
 def start_GFN(gfn, input_structure, folder):
     process = subprocess.Popen(['xtb', input_structure, '--opt', '--gfn' + gfn, '--verbose'], cwd='./' + folder, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-   
-    stdout, stderr = process.communicate()
     output = open(folder + "/output", "w")
-    print(stdout.decode(errors="replace"), file=output)
+    for line in process.stdout:
+        print(line.decode(errors="replace"), end='', file=output)
+    stdout, stderr = process.communicate()
     print(stderr.decode(errors="replace"), file=output)
     output.close()
 
 def start_GFN_freq(gfn, input_structure, folder):
     process = subprocess.Popen(['xtb', input_structure, '--hess', '--gfn' + gfn, '--verbose'], cwd='./'  + folder, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-    stdout, stderr = process.communicate()
     output = open("./" + folder + "/frequencies", "w")
-    print(stdout.decode(errors="replace"), file=output)
+    for line in process.stdout:
+        print(line.decode(errors="replace"), end='', file=output)
+    stdout, stderr = process.communicate()
     print(stderr.decode(errors="replace"), file=output)   
     output.close()
 
 def start_GFN_MD(MD_method, input_structure, folder_MD):
     process = subprocess.Popen(['xtb', '--input', 'MD.inp', input_structure, '--gfn' + MD_method, '--md', '--verbose'], cwd='./' + folder_MD, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-    stdout, stderr = process.communicate()
     output = open(folder_MD + "/output", "w")
-    print(stdout.decode(errors="replace"), file=output)
+    for line in process.stdout:
+        print(line.decode(errors="replace"), end='', file=output)
+    stdout, stderr = process.communicate()
     print(stderr.decode(errors="replace"), file=output)
     output.close()
     subprocess.call(['mv', folder_MD + '/xtb.trj', folder_MD + '/xtb.xyz'])
@@ -595,9 +598,10 @@ def start_GFN_MD(MD_method, input_structure, folder_MD):
 
 def start_orca(input_orca, orca_path, folder):
     process = subprocess.Popen([orca_path, input_orca], cwd='./' + folder, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-    stdout, stderr = process.communicate()
     output = open(folder + "/output", "w")
-    print(stdout.decode(errors="replace"), file=output)
+    for line in process.stdout:
+        print(line.decode(errors="replace"), end='', file=output)
+    stdout, stderr = process.communicate()
     print(stderr.decode(errors="replace"), file=output)
     output.close()
 
@@ -759,18 +763,18 @@ while i <= size:
     #print("i fin boucle " + str(i))
     #print("size " + str(size))
 
-
-io.write('./sphere.xyz', atoms)
-
 if input_file is not None:
     if input_orca is not None:
         folder_orca = folder + '-final_orca'
         subprocess.call(['mkdir', folder_orca])
         io.write('./' + folder_orca + '/cluster.xyz', atoms)
         file_orca_inp = open('./' + folder_orca + '/input_orca.inp', 'w')
-        print('!' + input_orca[0,1] + ' opt \n%pal \nnproc=24 \nend \n* xyzfile 0 1 cluster.xyz END',file=file_orca_inp)
+        print('!' + input_orca[0,1] + ' opt \n%pal \nnproc=' + input_orca[2,1] + ' \nend \n* xyzfile 0 1 cluster.xyz END',file=file_orca_inp)
         file_orca_inp.close()
         start_orca('input_orca.inp',input_orca[1,1], folder_orca)
+        atoms = io.read('./' + folder_orca + '/input_orca.xyz')
+
+io.write('./sphere.xyz', atoms)
 
 #io.write('./1/cluster.xyz', atoms)
 #print(np.amin(distances_ab(atoms2, atoms)))

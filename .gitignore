@@ -11,3 +11,7 @@
 /sphere*
 /xtbopt.xyz
 /.~lock.molecules_reactivity_network.csv#
+orca.sh
+input_orca_trj.xyz
+movie_gfn2.xyz
+orca.slurm
