@@ -15,3 +15,5 @@ orca.sh
 input_orca_trj.xyz
 movie_gfn2.xyz
 orca.slurm
+/studies
+/test_spherical*

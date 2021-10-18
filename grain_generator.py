@@ -10,12 +10,15 @@ import argparse
 import os
 import sys
 import math
+from datetime import datetime
+startTime = datetime.now()
 
 rng =np.random.default_rng()
 
 parser = argparse.ArgumentParser()
 parser.add_argument("-size", "--size", help="Size", type=int, default="0")
 parser.add_argument("-g", "--gfn", help="GFN-xTB method to use", default="2")
+parser.add_argument("-structure", "--structure", help="Pre-existing structure")
 parser.add_argument("-mix", "--mixed", nargs='+', help="If you want to produce a grain using the mixed method. High accuracy level first, second is every x molecules the high level is done. Low level is what was chosen with --gfn. For ff as low level we add one high level at 50.", type=str)
 parser.add_argument("-inp", "--input", help="Give the name of the input file from which the program will read the parameters of the grain building process.", type=str)
 parser.add_argument("-mol", "--molecule", help="If you want a grain with only one type of molecule.", type=str, default="H2O")
@@ -36,11 +39,17 @@ size = args.size
 restart = args.restart
 
 gfn = str(args.gfn)
+structure = args.structure
 mol = str(args.molecule)
 agermain2021 = args.agermain2021
 random_law = args.random_law
 opt_cycle = args.optimisation_cycle
 final_gfn2 = args.final_gfn2
+
+if final_gfn2 == True:
+    Time_file = open('grain_' + str(size) + '_gfn' + str(gfn) + '_cycle-' + str(opt_cycle) + '_gfn2_execution_time.txt', 'w')
+else:
+    Time_file = open('grain_' + str(size) + '_gfn' + str(gfn) + '_cycle-' + str(opt_cycle) + '_execution_time.txt', 'w')
 
 MD_method_and_cycle = args.MD
 if MD_method_and_cycle is not None:
@@ -108,6 +117,8 @@ if input_file is not None:
     if input_building is not None:
         list_mol = deepcopy(input_building[1:,:])
         size = np.sum(list_mol[:,1].astype(int))
+else:
+    list_mol = np.array([mol, size])
 
 def FromXYZtoDataframeMolecule(input_file):
     #read and encode .xyz fiel into Pandas Dataframe
@@ -302,6 +313,8 @@ def molecule_positioning_simplified(atoms, name_atom_added, random_law):
             position_mol[2] = (radius + distance + i*steps)*np.cos(theta)
 
             atoms2.set_positions(positions + position_mol)
+    #elif random_law == "grid":
+
 
     return atoms2
 
@@ -568,6 +581,7 @@ def molecule_csv(mol):
     return atoms
 
 def start_GFN(gfn, input_structure, folder):
+    GFN_start_time = datetime.now()
     process = subprocess.Popen(['xtb', input_structure, '--opt', '--gfn' + gfn, '--verbose'], cwd='./' + folder, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
     output = open(folder + "/output", "w")
     for line in process.stdout:
@@ -575,6 +589,7 @@ def start_GFN(gfn, input_structure, folder):
     stdout, stderr = process.communicate()
     print(stderr.decode(errors="replace"), file=output)
     output.close()
+    print('GFN' + str(gfn), str(datetime.now() - GFN_start_time), folder, file=Time_file)
 
 def start_GFN_freq(gfn, input_structure, folder):
     process = subprocess.Popen(['xtb', input_structure, '--hess', '--gfn' + gfn, '--verbose'], cwd='./'  + folder, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
@@ -604,6 +619,20 @@ def start_orca(input_orca, orca_path, folder):
     stdout, stderr = process.communicate()
     print(stderr.decode(errors="replace"), file=output)
     output.close()
+
+def molecule_selection(list_mol, method_selection):
+    if method_selection == 'random':
+        list_weight = list_mol[:,1].astype(int)/np.sum(list_mol[:,1].astype(int))
+        random_mol = np.random.choice(len(list_mol[:,:]),1, p=list_weight)
+        mol = list_mol[random_mol,0][0]
+        list_mol[random_mol,1] = str(int(list_mol[random_mol,1]) - 1)
+    else:
+        for l in range(len(list_mol)):
+            if int(list_mol[l,1]) !=0:
+                mol = list_mol[l,0]
+                list_mol[l,1] = str(int(list_mol[l,1]) - 1)
+                break
+    return mol, list_mol
 
 if input_file is not None:
     for i in range(len(list_mol)):
@@ -639,45 +668,26 @@ if restart is not None:
 else:
     if "input_building" in globals():
         if input_building is not None:
-            if input_building[0,1] == 'random':
-                list_weight = list_mol[:,1].astype(int)/np.sum(list_mol[:,1].astype(int))
-                random_mol = np.random.choice(len(list_mol[:,:]),1, p=list_weight)
-                mol = list_mol[random_mol,0][0]
-                list_mol[random_mol,1] = str(int(list_mol[random_mol,1]) - 1)
+            if structure is None:
+                mol, list_mol = molecule_selection(list_mol, input_building[0,1])
+                atoms = io.read('./' + mol + '_gfn' + gfn + '/' + mol + '.xyz')
             else:
-                for l in range(len(list_mol)):
-                    print(l)
-                    if int(list_mol[l,1]) !=0:
-                        mol = list_mol[l,0]
-                        print(mol)
-                        list_mol[l,1] = str(int(list_mol[l,1]) - 1)
-                        break
-            atoms = io.read('./' + mol + '_gfn' + gfn + '/' + mol + '.xyz')
+                atoms = io.read(structure)
     else:
-        atoms = io.read('./' + mol + '_gfn' + gfn + '/' + mol + '.xyz') 
-
-i = 2
-while i <= size:
+        if structure is not None:
+            atoms = io.read(structure)
+        else:
+            atoms = io.read('./' + mol + '_gfn' + gfn + '/' + mol + '.xyz') 
+i = 1
+while i < size:
     if restart is not None:
         if i < restart:
             i +=1
             continue
     if "input_building" in globals():    
         if input_building is not None:
-            if input_building[0,1] == 'random':
-                list_weight = list_mol[:,1].astype(int)/np.sum(list_mol[:,1].astype(int))
-                random_mol = np.random.choice(len(list_mol[:,:]),1, p=list_weight)
-                mol = list_mol[random_mol,0][0]
-                print(mol)
-                print(list_weight)
-                list_mol[random_mol,1] = str(int(list_mol[random_mol,1]) - 1)
-            else:
-                for l in range(len(list_mol)):
-                    if int(list_mol[l,1]) !=0:
-                        mol = list_mol[l,0]
-                        list_mol[l,1] = str(int(list_mol[l,1]) - 1)
-                        break
-    
+            mol, list_mol = molecule_selection(list_mol, input_building[0,1])
+    i +=1
     atoms2 = molecule_positioning_simplified(atoms, mol, random_law)
     atoms = atoms + atoms2
     
@@ -687,7 +697,6 @@ while i <= size:
     io.write('./' + folder + '/cluster.xyz', atoms)
 
     if i%opt_cycle != 0 and i != size:
-        i += 1
         continue
 
     start_GFN(gfn, 'cluster.xyz', folder)
@@ -759,7 +768,7 @@ while i <= size:
         print('check surface')
         atoms, i, nbr_final_gfn2, nbr_mol_attrib_problem, nbr_single_hb = check_surface_agermain2021(atoms, i, size, nbr_final_gfn2, nbr_mol_attrib_problem, nbr_single_hb)
 
-    i += 1
+
     #print("i fin boucle " + str(i))
     #print("size " + str(size))
 
@@ -774,25 +783,10 @@ if input_file is not None:
         start_orca('input_orca.inp',input_orca[1,1], folder_orca)
         atoms = io.read('./' + folder_orca + '/input_orca.xyz')
 
-io.write('./sphere.xyz', atoms)
+if final_gfn2 == True:
+    io.write('grain_' + str(size) + '_gfn' + str(gfn) + '_cycle-' + str(opt_cycle) + '_gfn2.xyz', atoms)
+else:
+    io.write('grain_' + str(size) + '_gfn' + str(gfn) + '_cycle-' + str(opt_cycle) + '.xyz', atoms)
 
-#io.write('./1/cluster.xyz', atoms)
-#print(np.amin(distances_ab(atoms2, atoms)))
-#print(barycentre(atoms2).get_positions())
-#io.write('water2.xyz', atoms2)
-
-
-#io.write('water_added.xyz', atoms + atoms_added)
-
-#print(atoms.get_positions())
-#print(atoms2.get_positions())
-#print(atoms2.get_atomic_numbers())
-#print(atoms2.get_chemical_symbols())
-#print(atoms.get_center_of_mass())
-
-#print(atoms[0])
-
-#print(radius_gyration(atoms))
-
-#atoms.get_distance(atoms[0], atoms[2])
-# %%
+print('Execution time:', str(datetime.now() - startTime), file=Time_file)
+Time_file.close()
