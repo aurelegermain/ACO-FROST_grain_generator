@@ -3,6 +3,7 @@ import pandas as pd
 from copy import deepcopy
 import subprocess
 import numpy as np
+from scipy import sparse
 from ase import io, Atoms, neighborlist
 from ase.build import molecule
 from ase.data.pubchem import pubchem_atoms_search, pubchem_atoms_conformer_search
@@ -19,6 +20,7 @@ parser = argparse.ArgumentParser()
 parser.add_argument("-size", "--size", help="Size", type=int, default="0")
 parser.add_argument("-g", "--gfn", help="GFN-xTB method to use", default="2")
 parser.add_argument("-structure", "--structure", help="Pre-existing structure")
+parser.add_argument("-fixed_structure", "--fixed_structure", help="Pre-existing structure", action='store_true')
 parser.add_argument("-mix", "--mixed", nargs='+', help="If you want to produce a grain using the mixed method. High accuracy level first, second is every x molecules the high level is done. Low level is what was chosen with --gfn. For ff as low level we add one high level at 50.", type=str)
 parser.add_argument("-inp", "--input", help="Give the name of the input file from which the program will read the parameters of the grain building process.", type=str)
 parser.add_argument("-mol", "--molecule", help="If you want a grain with only one type of molecule.", type=str, default="H2O")
@@ -40,11 +42,14 @@ restart = args.restart
 
 gfn = str(args.gfn)
 structure = args.structure
+fixed_structure = args.fixed_structure
 mol = str(args.molecule)
 agermain2021 = args.agermain2021
 random_law = args.random_law
 opt_cycle = args.optimisation_cycle
 final_gfn2 = args.final_gfn2
+
+fixed_core_input = None
 
 if final_gfn2 == True:
     Time_file = open('grain_' + str(size) + '_gfn' + str(gfn) + '_cycle-' + str(opt_cycle) + '_gfn2_execution_time.txt', 'w')
@@ -60,6 +65,19 @@ High_method_and_cycle = args.mixed
 if High_method_and_cycle is not None:
     High_method = str(High_method_and_cycle[0])
     High_cycle = int(High_method_and_cycle[1])
+    if structure is not None:
+        atoms = io.read(structure)
+        if fixed_structure is True:
+            file_xtb_input = open("./MD.inp","w")
+            print("$fix", file=file_xtb_input)
+            print("    atoms: 1-" + str(len(atoms)), file=file_xtb_input)
+            print("$end", file=file_xtb_input)
+            print('$md\n   temp=10 # in K\n   time=1\n   dump=25\n   step=  1.0  # in fs\n$end',file=file_xtb_input)
+            file_xtb_input.close()
+    else:
+        file_md_inp = open('MD.inp', 'w')
+        print('$md\n   temp=10 # in K\n   time=1\n   dump=25\n   step=  1.0  # in fs\n$end',file=file_md_inp)
+        file_md_inp.close()
 
 distance = 2.5
 coeff_min = 1.00
@@ -79,9 +97,19 @@ if agermain2021 is not False:
     High_cycle = 100
     gfn = 'ff'
     mol = 'H2O'
-    file_md_inp = open('MD.inp', 'w')
-    print('$md\n   temp=10 # in K\n   time=1\n   dump=25\n   step=  1.0  # in fs\n$end',file=file_md_inp)
-    file_md_inp.close()
+    if structure is not None:
+        atoms = io.read(structure)
+        if fixed_structure is True:
+            file_xtb_input = open("./MD.inp","w")
+            print("$fix", file=file_xtb_input)
+            print("    atoms: 1-" + str(len(atoms)), file=file_xtb_input)
+            print("$end", file=file_xtb_input)
+            print('$md\n   temp=10 # in K\n   time=1\n   dump=25\n   step=  1.0  # in fs\n$end',file=file_xtb_input)
+            file_xtb_input.close()
+    else:
+        file_md_inp = open('MD.inp', 'w')
+        print('$md\n   temp=10 # in K\n   time=1\n   dump=25\n   step=  1.0  # in fs\n$end',file=file_md_inp)
+        file_md_inp.close()
 
 
 if check_surface == True:
@@ -205,6 +233,14 @@ def FromXYZtoMoleculeNumpy(input_file):
     NumpyMolecule = FromXYZtoDataframeMolecule(input_file).to_numpy() 
     return NumpyMolecule
 
+def atom_to_molecules(atoms):
+    cutOff = neighborlist.natural_cutoffs(atoms, mult=0.95)
+    neighborList = neighborlist.NeighborList(cutOff, self_interaction=False, bothways=False)
+    neighborList.update(atoms)
+    matrix = neighborList.get_connectivity_matrix()
+    n_components, component_list = sparse.csgraph.connected_components(matrix)
+    return n_components, component_list
+
 def radius_gyration(atoms):
     radius_gyration = np.sqrt(np.dot(atoms.get_masses(), distances_3d(atoms.get_positions())**2) / np.sum(atoms.get_masses()))
     return radius_gyration
@@ -246,7 +282,7 @@ def barycentre(atoms):
     return atoms
 
 def molecule_positioning_simplified(atoms, name_atom_added, random_law):
-    atoms2 = deepcopy(molecule(name_atom_added))
+    atoms2 = deepcopy(io.read('./' + name_atom_added + '_gfn' + gfn + '/' + name_atom_added + '.xyz'))
     barycentre(atoms2)
 
     if random_law == "normal":
@@ -314,8 +350,125 @@ def molecule_positioning_simplified(atoms, name_atom_added, random_law):
 
             atoms2.set_positions(positions + position_mol)
     #elif random_law == "grid":
+    elif random_law == "plane":
+        angle_mol = rng.random(3)*360
+        atoms2.rotate(angle_mol[0], "x")
+        atoms2.rotate(angle_mol[1], "y")
+        atoms2.rotate(angle_mol[2], "z")
+        positions = atoms2.get_positions()
 
+        theta = rng.random()*2*np.pi
+        phi = 0
 
+        radius = np.percentile(distances_3d(atoms),90)
+
+        position_mol = np.zeros(3)
+
+        position_mol[0] = (radius + distance)*np.cos(phi)*np.sin(theta)
+        position_mol[1] = (radius + distance)*np.sin(phi)*np.sin(theta)
+        position_mol[2] = (radius + distance)*np.cos(theta)
+
+        atoms2.set_positions(positions + position_mol)
+
+        i = 0
+        while np.amin(distances_ab(atoms2, atoms)) > distance * coeff_max or np.amin(distances_ab(atoms2, atoms)) < distance / coeff_min:
+            #print(i)
+            if np.amin(distances_ab(atoms2, atoms)) > distance * coeff_max:
+                i = i - 1
+            else:
+                i = i + 1
+            position_mol[0] = (radius + distance + i*steps)*np.cos(phi)*np.sin(theta)
+            position_mol[1] = (radius + distance + i*steps)*np.sin(phi)*np.sin(theta)
+            position_mol[2] = (radius + distance + i*steps)*np.cos(theta)
+
+            atoms2.set_positions(positions + position_mol)
+    elif random_law == "hollow":
+        #distance = 2
+        hollow_radius = 3
+        if len(atoms) == len(atoms2): atoms.set_positions(atoms.get_positions() + hollow_radius) #A changer!!!
+        angle_mol = rng.random(3)*360
+        atoms2.rotate(angle_mol[0], "x")
+        atoms2.rotate(angle_mol[1], "y")
+        atoms2.rotate(angle_mol[2], "z")
+        positions = atoms2.get_positions()
+
+        theta = rng.random()*2 - 1
+        phi = rng.random()*2*np.pi
+
+        radius = np.percentile(distances_3d(atoms),50)
+
+        position_mol = np.zeros(3)
+
+        position_mol[0] = (hollow_radius)*np.sqrt(1 - theta**2)*np.cos(phi)
+        position_mol[1] = (hollow_radius)*np.sqrt(1 - theta**2)*np.sin(phi)
+        position_mol[2] = (hollow_radius)*theta
+
+        atoms2.set_positions(positions + position_mol)
+
+        i = 0
+        while np.amin(distances_ab(atoms2, atoms)) < distance / coeff_min or np.amin(distances_3d(atoms2)) < hollow_radius:
+            #print(i)
+            i = i + 1
+            
+            position_mol[0] = (hollow_radius + i*steps)*np.sqrt(1 - theta**2)*np.cos(phi)
+            position_mol[1] = (hollow_radius + i*steps)*np.sqrt(1 - theta**2)*np.sin(phi)
+            position_mol[2] = (hollow_radius + i*steps)*theta
+
+            atoms2.set_positions(positions + position_mol)
+    elif random_law == "spherical":
+        theta = 2
+        phi = 2.5
+        phi_level_list = 1
+        index = 0
+        k=0
+        atoms_size = atom_to_molecules(atoms)[0]
+        atoms_to_add = deepcopy(atoms2)
+        atoms_to_add2 = 0
+
+        while index < size:
+            if index == (atoms_size + 1) and index < size: 
+                break
+
+            if k != 0:
+                theta = int(k*2 + 1)
+                phi = int(k*4)
+                phi_level_list = np.append(phi_level_list,phi)
+                position_mol = np.zeros(3)
+                theta_list = [(i/(theta-1))*np.pi for i in range(theta)]
+                radius = k*2.8  
+                for i in range(len(theta_list)):
+                    if index == (atoms_size + 1) and index < size: 
+                        break
+                    phi_level = int(abs(abs(i - (len(theta_list)-1)/2) - (len(theta_list)-1)/2))
+                    phi_list = [(l/phi_level_list[phi_level])*2*np.pi for l in range(phi_level_list[phi_level])]
+
+                    for j in range(len(phi_list)):
+                        atoms_to_add = deepcopy(atoms2)
+                        position_mol[0] = (radius)*np.cos(phi_list[j])*np.sin(theta_list[i])
+                        position_mol[1] = (radius)*np.sin(phi_list[j])*np.sin(theta_list[i])
+                        position_mol[2] = (radius)*np.cos(theta_list[i])
+
+                        index +=1
+
+                        if index == (atoms_size + 1) and index < size: 
+                            break
+                        elif index != (atoms_size + 1) and index >=size:
+                            if (j < (len(phi_list) ) and i < (len(theta_list))) or (j < (len(phi_list)) and i == (len(theta_list) - 1)):
+                                positions = atoms_to_add.get_positions() 
+                                atoms_to_add.set_positions(positions + position_mol)
+                                if atoms_to_add2 == 0:
+                                    atoms_to_add2 = deepcopy(atoms_to_add)
+                                else:
+                                    atoms_to_add2 = atoms_to_add2 + atoms_to_add
+                k += 1
+            elif k == 0:
+                k += 1
+                index += 1   
+        positions = atoms_to_add.get_positions() 
+        atoms_to_add.set_positions(positions + position_mol)
+        if atoms_to_add2 == 0:
+            atoms_to_add2 = deepcopy(atoms_to_add)
+        atoms2 = deepcopy(atoms_to_add2)
     return atoms2
 
 def check_surface_agermain2021(atoms, i, nbr_mol, nbr_final_gfn2, nbr_mol_attrib_problem, nbr_single_hb):
@@ -580,9 +733,13 @@ def molecule_csv(mol):
     atoms = io.read(df.loc[df['species'] == mol, 'pwd_xyz'].values[0]) 
     return atoms
 
-def start_GFN(gfn, input_structure, folder):
+def start_GFN(gfn, input_structure, folder, fixed_core_input):
     GFN_start_time = datetime.now()
-    process = subprocess.Popen(['xtb', input_structure, '--opt', '--gfn' + gfn, '--verbose'], cwd='./' + folder, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+    if fixed_core_input is not None:
+        subprocess.call(['cp', './' + fixed_core_input, './' + folder])
+        process = subprocess.Popen(['xtb', '--input', fixed_core_input, input_structure, '--opt', '--gfn' + gfn, '--verbose'], cwd='./' + folder, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+    else:
+        process = subprocess.Popen(['xtb', input_structure, '--opt', '--gfn' + gfn, '--verbose'], cwd='./' + folder, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
     output = open(folder + "/output", "w")
     for line in process.stdout:
         print(line.decode(errors="replace"), end='', file=output)
@@ -591,8 +748,12 @@ def start_GFN(gfn, input_structure, folder):
     output.close()
     print('GFN' + str(gfn), str(datetime.now() - GFN_start_time), folder, file=Time_file)
 
-def start_GFN_freq(gfn, input_structure, folder):
-    process = subprocess.Popen(['xtb', input_structure, '--hess', '--gfn' + gfn, '--verbose'], cwd='./'  + folder, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+def start_GFN_freq(gfn, input_structure, folder, fixed_core_input):
+    if fixed_core_input is not None:
+        subprocess.call(['cp', './' + fixed_core_input, './' + folder])
+        process = subprocess.Popen(['xtb', '--input', fixed_core_input, input_structure, '--hess', '--gfn' + gfn, '--verbose'], cwd='./'  + folder, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+    else:
+        process = subprocess.Popen(['xtb', input_structure, '--hess', '--gfn' + gfn, '--verbose'], cwd='./'  + folder, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
     output = open("./" + folder + "/frequencies", "w")
     for line in process.stdout:
         print(line.decode(errors="replace"), end='', file=output)
@@ -600,7 +761,7 @@ def start_GFN_freq(gfn, input_structure, folder):
     print(stderr.decode(errors="replace"), file=output)   
     output.close()
 
-def start_GFN_MD(MD_method, input_structure, folder_MD):
+def start_GFN_MD(MD_method, input_structure, folder_MD, fixed_core_input):
     process = subprocess.Popen(['xtb', '--input', 'MD.inp', input_structure, '--gfn' + MD_method, '--md', '--verbose'], cwd='./' + folder_MD, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
     output = open(folder_MD + "/output", "w")
     for line in process.stdout:
@@ -641,17 +802,17 @@ if input_file is not None:
             #make a directory with the name of the molecule + _xtb. To store the xtb files of the molecule to sample
             subprocess.call(['mkdir', mol + '_gfn' + gfn + ''])
             io.write('./' + mol + '_gfn' + gfn + '/' + mol + '_inp.xyz', molecule_csv(mol))
-            start_GFN(gfn, mol + '_inp.xyz', mol + '_gfn' + gfn)
+            start_GFN(gfn, mol + '_inp.xyz', mol + '_gfn' + gfn, None)
             subprocess.call(['mv', './' + mol + '_gfn' + gfn + '/xtbopt.xyz', './' + mol + '_gfn' + gfn + '/' + mol + '.xyz'])
-            start_GFN_freq(gfn, mol + '.xyz', mol + '_gfn' + gfn + '/')
+            start_GFN_freq(gfn, mol + '.xyz', mol + '_gfn' + gfn + '/', None)
 
 elif os.path.isdir('./' + mol + '_gfn' + gfn + '/') is False:
     #make a directory with the name of the molecule + _xtb. To store the xtb files of the molecule to sample
     subprocess.call(['mkdir', mol + '_gfn' + gfn + ''])
     io.write('./' + mol + '_gfn' + gfn + '/' + mol + '_inp.xyz', molecule_csv(mol))
-    start_GFN(gfn, mol + '_inp.xyz', mol + '_gfn' + gfn)
+    start_GFN(gfn, mol + '_inp.xyz', mol + '_gfn' + gfn, None)
     subprocess.call(['mv', './' + mol + '_gfn' + gfn + '/xtbopt.xyz', './' + mol + '_gfn' + gfn + '/' + mol + '.xyz'])
-    start_GFN_freq(gfn, mol + '.xyz', mol + '_gfn' + gfn + '/')
+    start_GFN_freq(gfn, mol + '.xyz', mol + '_gfn' + gfn + '/', None)
 
 if restart is not None:
     if MD_method_and_cycle is not None and High_method_and_cycle is not None:
@@ -676,6 +837,14 @@ else:
     else:
         if structure is not None:
             atoms = io.read(structure)
+
+            if fixed_structure is True:
+                file_xtb_input = open("./fixed_core.inp","w")
+                print("$fix", file=file_xtb_input)
+                print("    atoms: 1-" + str(len(atoms)), file=file_xtb_input)
+                print("$end", file=file_xtb_input)
+                file_xtb_input.close()
+                fixed_core_input = 'fixed_core.inp'
         else:
             atoms = io.read('./' + mol + '_gfn' + gfn + '/' + mol + '.xyz') 
 i = 1
@@ -699,7 +868,7 @@ while i < size:
     if i%opt_cycle != 0 and i != size:
         continue
 
-    start_GFN(gfn, 'cluster.xyz', folder)
+    start_GFN(gfn, 'cluster.xyz', folder, fixed_core_input)
     try:
         atoms = io.read('./' + folder + '/xtbopt.xyz') 
     except FileNotFoundError:
@@ -714,7 +883,7 @@ while i < size:
             subprocess.call(['cp', 'MD.inp', folder_MD])
             io.write('./' + folder_MD + '/cluster.xyz', atoms)
 
-            start_GFN_MD(MD_method, 'cluster.xyz', folder_MD)
+            start_GFN_MD(MD_method, 'cluster.xyz', folder_MD, fixed_core_input)
 
             atoms = io.read('./' + folder_MD + '/xtbmd.xyz')
 
@@ -723,7 +892,7 @@ while i < size:
 
             io.write('./' + folder_MD_opt + '/cluster.xyz', atoms)
 
-            start_GFN(gfn, 'cluster.xyz', folder_MD_opt)
+            start_GFN(gfn, 'cluster.xyz', folder_MD_opt, fixed_core_input)
 
             atoms = io.read('./' + folder_MD_opt + '/xtbopt.xyz') 
 
@@ -733,7 +902,7 @@ while i < size:
             subprocess.call(['mkdir', folder_High])
             io.write('./' + folder_High + '/cluster.xyz', atoms)
 
-            start_GFN(High_method, 'cluster.xyz', folder_High)
+            start_GFN(High_method, 'cluster.xyz', folder_High, fixed_core_input)
 
             atoms = io.read('./' + folder_High + '/xtbopt.xyz') 
 
@@ -742,7 +911,7 @@ while i < size:
             subprocess.call(['mkdir', folder_High])
             io.write('./' + folder_High + '/cluster.xyz', atoms)
 
-            start_GFN(High_method, 'cluster.xyz', folder_High)
+            start_GFN(High_method, 'cluster.xyz', folder_High, fixed_core_input)
 
             atoms = io.read('./' + folder_High + '/xtbopt.xyz') 
 
@@ -750,7 +919,7 @@ while i < size:
         folder_final_gfn2 = folder + '-final_gfn2'
         subprocess.call(['mkdir', folder_final_gfn2])
         io.write('./' + folder_final_gfn2 + '/cluster.xyz', atoms)
-        start_GFN('2', 'cluster.xyz', folder_final_gfn2)
+        start_GFN('2', 'cluster.xyz', folder_final_gfn2, fixed_core_input)
         atoms = io.read('./' + folder_final_gfn2 + '/xtbopt.xyz')
 
 #    if final_gfn2 is True and i == size and gfn !='2':
@@ -784,9 +953,9 @@ if input_file is not None:
         atoms = io.read('./' + folder_orca + '/input_orca.xyz')
 
 if final_gfn2 == True:
-    io.write('grain_' + str(size) + '_gfn' + str(gfn) + '_cycle-' + str(opt_cycle) + '_gfn2.xyz', atoms)
+    io.write('grain_' + str(size) + '_gfn' + str(gfn) + '_cycle-' + str(opt_cycle) + '_' + random_law + '_gfn2.xyz', atoms)
 else:
-    io.write('grain_' + str(size) + '_gfn' + str(gfn) + '_cycle-' + str(opt_cycle) + '.xyz', atoms)
+    io.write('grain_' + str(size) + '_gfn' + str(gfn) + '_cycle-' + str(opt_cycle) + '_' + random_law + '.xyz', atoms)
 
 print('Execution time:', str(datetime.now() - startTime), file=Time_file)
 Time_file.close()
