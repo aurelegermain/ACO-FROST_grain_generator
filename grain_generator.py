@@ -83,6 +83,7 @@ distance = 2.5
 coeff_min = 1.00
 coeff_max = 1.1
 steps = 0.1
+nbr_not_converged = 0
 
 check_surface = False
 
@@ -435,7 +436,7 @@ def molecule_positioning_simplified(atoms, name_atom_added, random_law):
                 phi_level_list = np.append(phi_level_list,phi)
                 position_mol = np.zeros(3)
                 theta_list = [(i/(theta-1))*np.pi for i in range(theta)]
-                radius = k*2.8  
+                radius = k*3  
                 for i in range(len(theta_list)):
                     if index == (atoms_size + 1) and index < size: 
                         break
@@ -450,16 +451,25 @@ def molecule_positioning_simplified(atoms, name_atom_added, random_law):
 
                         index +=1
 
-                        if index == (atoms_size + 1) and index < size: 
+                        if index == (atoms_size + 1) and index < size:
+                            #if atoms_to_add2 !=0: 
+                            #    print('i:', i, 'j:', j, 'len(theta_list):', len(theta_list), 'len(phi_list):', len(phi_list), 'index:', index, 'atoms_size:', atoms_size, 'atoms_to_add2 size', atom_to_molecules(atoms_to_add2)[0], 'break')
+                            #else:
+                            #    print('i:', i, 'j:', j, 'len(theta_list):', len(theta_list), 'len(phi_list):', len(phi_list), 'index:', index, 'atoms_size:', atoms_size, 'atoms_to_add2 size', '0', 'break')
                             break
-                        elif index != (atoms_size + 1) and index >=size:
+                        elif index >= (atoms_size + 1) and index >=size:
                             if (j < (len(phi_list) ) and i < (len(theta_list))) or (j < (len(phi_list)) and i == (len(theta_list) - 1)):
                                 positions = atoms_to_add.get_positions() 
                                 atoms_to_add.set_positions(positions + position_mol)
+                                #if atoms_to_add2 != 0:
+                                #    print('i:', i, 'j:', j, 'len(theta_list):', len(theta_list), 'len(phi_list):', len(phi_list), 'index:', index, 'atoms_size:', atoms_size, 'atoms_to_add2 size', atom_to_molecules(atoms_to_add2)[0])
+                                #else:
+                                #    print('i:', i, 'j:', j, 'len(theta_list):', len(theta_list), 'len(phi_list):', len(phi_list), 'index:', index, 'atoms_size:', atoms_size, 'atoms_to_add2 size', '0')
                                 if atoms_to_add2 == 0:
                                     atoms_to_add2 = deepcopy(atoms_to_add)
                                 else:
                                     atoms_to_add2 = atoms_to_add2 + atoms_to_add
+                                    #print('A atoms_to_add2 size:', atom_to_molecules(atoms_to_add2)[0])
                 k += 1
             elif k == 0:
                 k += 1
@@ -469,6 +479,8 @@ def molecule_positioning_simplified(atoms, name_atom_added, random_law):
         if atoms_to_add2 == 0:
             atoms_to_add2 = deepcopy(atoms_to_add)
         atoms2 = deepcopy(atoms_to_add2)
+        #print('B atoms_to_add2 size:', atom_to_molecules(atoms_to_add2)[0])
+
     return atoms2
 
 def check_surface_agermain2021(atoms, i, nbr_mol, nbr_final_gfn2, nbr_mol_attrib_problem, nbr_single_hb):
@@ -858,6 +870,7 @@ while i < size:
             mol, list_mol = molecule_selection(list_mol, input_building[0,1])
     i +=1
     atoms2 = molecule_positioning_simplified(atoms, mol, random_law)
+    atoms_old = deepcopy(atoms)
     atoms = atoms + atoms2
     
     folder = str(i)
@@ -870,10 +883,17 @@ while i < size:
 
     start_GFN(gfn, 'cluster.xyz', folder, fixed_core_input)
     try:
-        atoms = io.read('./' + folder + '/xtbopt.xyz') 
+        atoms = io.read('./' + folder + '/xtbopt.xyz')
+        nbr_not_converged = 0 
     except FileNotFoundError:
         print('Error: Not converged')
-        subprocess.call(['mv', folder , folder + '-not_converged'])
+        subprocess.call(['mv', folder , folder + '-not_converged-' + str(nbr_not_converged)])
+        atoms = deepcopy(atoms_old)
+        i -= 1
+        nbr_not_converged += 1
+        if nbr_not_converged > 10: 
+            print('Grain building failed after too many converging attempt.')
+            exit()
         continue
 
     if MD_method_and_cycle is not None: #Module for start the MD cycles
