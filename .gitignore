@@ -1,6 +1,6 @@
 /.vscode
 /*.inp
-/*.mol
+*.mol
 /subprocess_test.py
 /test_args.py
 /test.py
@@ -17,3 +17,10 @@ movie_gfn2.xyz
 orca.slurm
 /studies
 /test_spherical*
+/*.xyz
+/*.txt
+/*/*.xyz
+*.bmp
+*.jpg
+*.png
+].out

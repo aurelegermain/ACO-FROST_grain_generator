@@ -12,6 +12,7 @@ import os
 import sys
 import math
 from datetime import datetime
+from pathlib import Path
 startTime = datetime.now()
 
 rng =np.random.default_rng()
@@ -51,6 +52,63 @@ final_gfn2 = args.final_gfn2
 
 fixed_core_input = None
 
+if input_file is not None:
+
+    with open(input_file , "rt") as myfile:
+        output = myfile.read()
+
+    try:    
+        start_string="$parameters"
+        end_string="$end" 
+        start = output.index(start_string) + len(start_string)
+        end = output.index(end_string, start)
+        input_parameters = output[start:end].split('\n')
+
+        for i,line in enumerate(input_parameters):
+            if 'distrib' in line:
+                distrib = int(line.split()[1])
+            else:
+                distrib = 0
+            
+            if 'gfn' in line:
+                gfn = str(line.split()[1])
+            
+            if 'size' in line:
+                size = int(line.split()[1])
+
+            if 'mixed' in line:
+                High_method_and_cycle = str(line.split()[1:3])
+
+            if 'MD' in line:
+                MD_method_and_cycle = str(line.split()[1:3])
+            
+            if 'struct' in line:
+                structure = str(line.split()[1])
+
+            if 'fixstruct' in line:
+                fixed_structure = str(line.split()[1])
+
+            if 'restart' in line:
+                restart = int(line.split()[1])
+
+            if 'rand' in line:
+                random_law = str(line.split()[1])
+
+            if 'opt' in line:
+                opt_cycle = int(line.split()[1])
+
+            if 'check' in line:
+                check_surface = True
+
+            if 'finalgfn2' in line:
+                final_gfn2 = True
+
+            if 'agermain2022' in line:
+                agermain2021 = True
+
+    except:
+        input_parameters = None
+
 if final_gfn2 == True:
     Time_file = open('grain_' + str(size) + '_gfn' + str(gfn) + '_cycle-' + str(opt_cycle) + '_gfn2_execution_time.txt', 'w')
 else:
@@ -84,6 +142,8 @@ coeff_min = 1.00
 coeff_max = 1.1
 steps = 0.1
 nbr_not_converged = 0
+
+orca_path = 'orca'
 
 check_surface = False
 
@@ -134,12 +194,17 @@ if input_file is not None:
         input_building = None
 
     try:    
+        #This input should be containing the first part of the wanted orca input, without geometry infos
         start_string="$orca"
         end_string="$end" 
         start = output.index(start_string) + len(start_string)
         end = output.index(end_string, start)
-        input_orca = output[start:end].strip().split()
-        input_orca = np.reshape(input_orca,(-1,2))
+        input_orca = output[start:end].strip()
+        #input_orca = np.reshape(input_orca,(-1,2))
+        file_orca_inp_name = 'input_orca.inp'
+        file_orca_inp = open(file_orca_inp_name, 'w')
+        print(input_orca,file=file_orca_inp)
+        file_orca_inp.close()
     except:
         input_orca = None
     
@@ -148,6 +213,8 @@ if input_file is not None:
         size = np.sum(list_mol[:,1].astype(int))
 else:
     list_mol = np.array([mol, size])
+    input_orca = None
+    input_building = None
 
 def FromXYZtoDataframeMolecule(input_file):
     #read and encode .xyz fiel into Pandas Dataframe
@@ -283,7 +350,10 @@ def barycentre(atoms):
     return atoms
 
 def molecule_positioning_simplified(atoms, name_atom_added, random_law):
-    atoms2 = deepcopy(io.read('./' + name_atom_added + '_gfn' + gfn + '/' + name_atom_added + '.xyz'))
+    if input_orca is not None:
+        atoms2 = deepcopy(io.read('./' + name_atom_added + '_orca/' + name_atom_added + '.xyz'))
+    else:
+        atoms2 = deepcopy(io.read('./' + name_atom_added + '_gfn' + gfn + '/' + name_atom_added + '.xyz'))
     barycentre(atoms2)
 
     if random_law == "normal":
@@ -809,14 +879,26 @@ def molecule_selection(list_mol, method_selection):
 
 if input_file is not None:
     for i in range(len(list_mol)):
-        if os.path.isdir('./' + list_mol[i,0] + '_gfn' + gfn + '/') is False:
+        if input_orca is not None:
             mol = list_mol[i,0]
-            #make a directory with the name of the molecule + _xtb. To store the xtb files of the molecule to sample
-            subprocess.call(['mkdir', mol + '_gfn' + gfn + ''])
-            io.write('./' + mol + '_gfn' + gfn + '/' + mol + '_inp.xyz', molecule_csv(mol))
-            start_GFN(gfn, mol + '_inp.xyz', mol + '_gfn' + gfn, None)
-            subprocess.call(['mv', './' + mol + '_gfn' + gfn + '/xtbopt.xyz', './' + mol + '_gfn' + gfn + '/' + mol + '.xyz'])
-            start_GFN_freq(gfn, mol + '.xyz', mol + '_gfn' + gfn + '/', None)
+            subprocess.call(['mkdir', mol + '_orca'])
+            io.write('./' + mol + '_orca/' + mol + '_inp.xyz', molecule_csv(mol))
+            subprocess.call(['cp', file_orca_inp_name, './' + mol + '_orca/'])
+            file_orca_inp = open('./' + mol + '_orca/' + file_orca_inp_name, 'a')
+            print('* xyzfile 0 1 ' + mol + '_inp.xyz END',file=file_orca_inp)
+            file_orca_inp.close()
+            start_orca(file_orca_inp_name, orca_path, mol + '_orca')
+            subprocess.call(['mv', mol + '_orca/' + Path(file_orca_inp_name).stem + '.xyz', mol + '_orca/' + mol + '.xyz'])
+
+        else:
+            if os.path.isdir('./' + list_mol[i,0] + '_gfn' + gfn + '/') is False:
+                mol = list_mol[i,0]
+                #make a directory with the name of the molecule + _xtb. To store the xtb files of the molecule to sample
+                subprocess.call(['mkdir', mol + '_gfn' + gfn + ''])
+                io.write('./' + mol + '_gfn' + gfn + '/' + mol + '_inp.xyz', molecule_csv(mol))
+                start_GFN(gfn, mol + '_inp.xyz', mol + '_gfn' + gfn, None)
+                subprocess.call(['mv', './' + mol + '_gfn' + gfn + '/xtbopt.xyz', './' + mol + '_gfn' + gfn + '/' + mol + '.xyz'])
+                start_GFN_freq(gfn, mol + '.xyz', mol + '_gfn' + gfn + '/', None)
 
 elif os.path.isdir('./' + mol + '_gfn' + gfn + '/') is False:
     #make a directory with the name of the molecule + _xtb. To store the xtb files of the molecule to sample
@@ -839,26 +921,34 @@ if restart is not None:
     else:
         atoms = io.read('./' + str(restart - 1) + '/xtbopt.xyz') 
 else:
-    if "input_building" in globals():
-        if input_building is not None:
-            if structure is None:
-                mol, list_mol = molecule_selection(list_mol, input_building[0,1])
-                atoms = io.read('./' + mol + '_gfn' + gfn + '/' + mol + '.xyz')
+    if input_building is not None:
+        if structure is None:
+            mol, list_mol = molecule_selection(list_mol, input_building[0,1])
+            if input_orca is not None:
+                atoms = io.read('./' + mol + '_orca/' + mol + '.xyz')
             else:
-                atoms = io.read(structure)
+                atoms = io.read('./' + mol + '_gfn' + gfn + '/' + mol + '.xyz')
+        else:
+            atoms = io.read(structure)
     else:
         if structure is not None:
             atoms = io.read(structure)
 
             if fixed_structure is True:
-                file_xtb_input = open("./fixed_core.inp","w")
-                print("$fix", file=file_xtb_input)
-                print("    atoms: 1-" + str(len(atoms)), file=file_xtb_input)
-                print("$end", file=file_xtb_input)
-                file_xtb_input.close()
-                fixed_core_input = 'fixed_core.inp'
+                if input_orca is not None:
+                    print('Not yet implemented')
+                else:
+                    file_xtb_input = open("./fixed_core.inp","w")
+                    print("$fix", file=file_xtb_input)
+                    print("    atoms: 1-" + str(len(atoms)), file=file_xtb_input)
+                    print("$end", file=file_xtb_input)
+                    file_xtb_input.close()
+                    fixed_core_input = 'fixed_core.inp'
         else:
-            atoms = io.read('./' + mol + '_gfn' + gfn + '/' + mol + '.xyz') 
+            if input_orca is not None:
+                atoms = io.read('./' + mol + '_orca/' + mol + '.xyz')
+            else:
+                atoms = io.read('./' + mol + '_gfn' + gfn + '/' + mol + '.xyz') 
 i = 1
 while i < size:
     if restart is not None:
@@ -880,21 +970,41 @@ while i < size:
 
     if i%opt_cycle != 0 and i != size:
         continue
-
-    start_GFN(gfn, 'cluster.xyz', folder, fixed_core_input)
-    try:
-        atoms = io.read('./' + folder + '/xtbopt.xyz')
-        nbr_not_converged = 0 
-    except FileNotFoundError:
-        print('Error: Not converged')
-        subprocess.call(['mv', folder , folder + '-not_converged-' + str(nbr_not_converged)])
-        atoms = deepcopy(atoms_old)
-        i -= 1
-        nbr_not_converged += 1
-        if nbr_not_converged > 10: 
-            print('Grain building failed after too many converging attempt.')
-            exit()
-        continue
+    
+    if input_orca is not None:
+        subprocess.call(['cp', file_orca_inp_name, folder])
+        file_orca_inp = open('./' + folder + '/' + file_orca_inp_name, 'a')
+        print('* xyzfile 0 1 cluster.xyz END',file=file_orca_inp)
+        file_orca_inp.close()
+        start_orca(file_orca_inp_name, orca_path, folder)
+        try:
+            atoms = io.read('./' + folder + '/' + Path(file_orca_inp_name).stem + '.xyz')
+            nbr_not_converged = 0 
+        except FileNotFoundError:
+            print('Error: Not converged')
+            subprocess.call(['mv', folder , folder + '-not_converged-' + str(nbr_not_converged)])
+            atoms = deepcopy(atoms_old)
+            i -= 1
+            nbr_not_converged += 1
+            if nbr_not_converged > 10: 
+                print('Grain building failed after too many converging attempt.')
+                exit()
+            continue        
+    else:
+        start_GFN(gfn, 'cluster.xyz', folder, fixed_core_input)
+        try:
+            atoms = io.read('./' + folder + '/xtbopt.xyz')
+            nbr_not_converged = 0 
+        except FileNotFoundError:
+            print('Error: Not converged')
+            subprocess.call(['mv', folder , folder + '-not_converged-' + str(nbr_not_converged)])
+            atoms = deepcopy(atoms_old)
+            i -= 1
+            nbr_not_converged += 1
+            if nbr_not_converged > 10: 
+                print('Grain building failed after too many converging attempt.')
+                exit()
+            continue
 
     if MD_method_and_cycle is not None: #Module for start the MD cycles
         if MD_cycle != 0 and i%MD_cycle == 0:
@@ -961,16 +1071,16 @@ while i < size:
     #print("i fin boucle " + str(i))
     #print("size " + str(size))
 
-if input_file is not None:
-    if input_orca is not None:
-        folder_orca = folder + '-final_orca'
-        subprocess.call(['mkdir', folder_orca])
-        io.write('./' + folder_orca + '/cluster.xyz', atoms)
-        file_orca_inp = open('./' + folder_orca + '/input_orca.inp', 'w')
-        print('!' + input_orca[0,1] + ' opt \n%pal \nnproc=' + input_orca[2,1] + ' \nend \n* xyzfile 0 1 cluster.xyz END',file=file_orca_inp)
-        file_orca_inp.close()
-        start_orca('input_orca.inp',input_orca[1,1], folder_orca)
-        atoms = io.read('./' + folder_orca + '/input_orca.xyz')
+#if input_file is not None:
+#    if input_orca is not None:
+#        folder_orca = folder + '-final_orca'
+#        subprocess.call(['mkdir', folder_orca])
+#        io.write('./' + folder_orca + '/cluster.xyz', atoms)
+#        file_orca_inp = open('./' + folder_orca + '/input_orca.inp', 'w')
+#        print('!' + input_orca[0,1] + ' opt \n%pal \nnproc=' + input_orca[2,1] + ' \nend \n* xyzfile 0 1 cluster.xyz END',file=file_orca_inp)
+#        file_orca_inp.close()
+#        start_orca('input_orca.inp',input_orca[1,1], folder_orca)
+#        atoms = io.read('./' + folder_orca + '/input_orca.xyz')
 
 if final_gfn2 == True:
     io.write('grain_' + str(size) + '_gfn' + str(gfn) + '_cycle-' + str(opt_cycle) + '_' + random_law + '_gfn2.xyz', atoms)
