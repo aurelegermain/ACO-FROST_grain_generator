@@ -51,6 +51,63 @@ final_gfn2 = args.final_gfn2
 
 fixed_core_input = None
 
+if input_file is not None:
+
+    with open(input_file , "rt") as myfile:
+        output = myfile.read()
+
+    try:    
+        start_string="$parameters"
+        end_string="$end" 
+        start = output.index(start_string) + len(start_string)
+        end = output.index(end_string, start)
+        input_parameters = output[start:end].split('\n')
+
+        for i,line in enumerate(input_parameters):
+            if 'distrib' in line:
+                distrib = int(line.split()[1])
+            else:
+                distrib = 0
+            
+            if 'gfn' in line:
+                gfn = str(line.split()[1])
+            
+            if 'size' in line:
+                size = int(line.split()[1])
+
+            if 'mixed' in line:
+                High_method_and_cycle = str(line.split()[1:3])
+
+            if 'MD' in line:
+                MD_method_and_cycle = str(line.split()[1:3])
+            
+            if 'struct' in line:
+                structure = str(line.split()[1])
+
+            if 'fixstruct' in line:
+                fixed_structure = str(line.split()[1])
+
+            if 'restart' in line:
+                restart = int(line.split()[1])
+
+            if 'rand' in line:
+                random_law = str(line.split()[1])
+
+            if 'opt' in line:
+                opt_cycle = int(line.split()[1])
+
+            if 'check' in line:
+                check_surface = True
+
+            if 'finalgfn2' in line:
+                final_gfn2 = True
+
+            if 'agermain2022' in line:
+                agermain2021 = True
+
+    except:
+        input_parameters = None
+
 if final_gfn2 == True:
     Time_file = open('grain_' + str(size) + '_gfn' + str(gfn) + '_cycle-' + str(opt_cycle) + '_gfn2_execution_time.txt', 'w')
 else:
