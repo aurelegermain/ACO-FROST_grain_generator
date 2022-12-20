@@ -26,7 +26,7 @@ parser.add_argument("-inp", "--input", help="Give the name of the input file fro
 parser.add_argument("-mol", "--molecule", help="If you want a grain with only one type of molecule.", type=str, default="H2O")
 parser.add_argument("-r", "--restart", help="If it is a restart and from where it is restarting", type=int)
 parser.add_argument("-md", "--MD", nargs='+', help="Molecular dynamics: Which method and every x molecule", type=str)
-parser.add_argument("-agermain2021", "--agermain2021", help="Produce a grain using the method described in Germain et al. 2021 to be submitted. Only needs -size.", action='store_true')
+parser.add_argument("-agermain2022", "--agermain2021", help="Produce a grain using the method described in Germain et al. 2022 to be submitted. Only needs -size.", action='store_true')
 parser.add_argument("-rand", "--random_law", help="Which rule to use for the random position of molecules", default="normal")
 parser.add_argument("-opt_cycle", "--optimisation_cycle", help="Number of molecules added before optimisation.", type=int, default="1")
 parser.add_argument("-final_gfn2", "--final_gfn2", help="A GFN2 optimisation will be done at the end of the building process.", default=False, action='store_true')
@@ -44,7 +44,7 @@ gfn = str(args.gfn)
 structure = args.structure
 fixed_structure = args.fixed_structure
 mol = str(args.molecule)
-agermain2021 = args.agermain2021
+agermain2021 = args.agermain2022
 random_law = args.random_law
 opt_cycle = args.optimisation_cycle
 final_gfn2 = args.final_gfn2
@@ -201,8 +201,19 @@ if input_file is not None:
         input_orca = None
     
     if input_building is not None:
-        list_mol = deepcopy(input_building[1:,:])
-        size = np.sum(list_mol[:,1].astype(int))
+        list_mol = deepcopy(input_building)
+        size_partial = np.sum(list_mol[:,1].astype(int))
+
+        if size_partial == 100:
+            if 'size' in globals() and size > 100:
+                list_mol[:,1] = (list_mol[:,1]*(size/100)).astype(int)
+        else:
+            size = size_partial
+
+        if distrib == 1:
+            method_selection = 'random'
+        else:
+            method_selection = 'follow'
 else:
     list_mol = np.array([mol, size])
 
@@ -899,7 +910,7 @@ else:
     if "input_building" in globals():
         if input_building is not None:
             if structure is None:
-                mol, list_mol = molecule_selection(list_mol, input_building[0,1])
+                mol, list_mol = molecule_selection(list_mol, method_selection)
                 atoms = io.read('./' + mol + '_gfn' + gfn + '/' + mol + '.xyz')
             else:
                 atoms = io.read(structure)
@@ -924,7 +935,7 @@ while i < size:
             continue
     if "input_building" in globals():    
         if input_building is not None:
-            mol, list_mol = molecule_selection(list_mol, input_building[0,1])
+            mol, list_mol = molecule_selection(list_mol, method_selection)
     i +=1
     atoms2 = molecule_positioning_simplified(atoms, mol, random_law)
     atoms_old = deepcopy(atoms)
