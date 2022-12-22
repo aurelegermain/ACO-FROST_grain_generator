@@ -49,6 +49,8 @@ random_law = args.random_law
 opt_cycle = args.optimisation_cycle
 final_gfn2 = args.final_gfn2
 
+check_surface = False
+
 fixed_core_input = None
 
 if input_file is not None:
@@ -64,12 +66,11 @@ if input_file is not None:
         input_parameters = output[start:end].split('\n')
 
         for i,line in enumerate(input_parameters):
+
             if 'distrib' in line:
                 distrib = int(line.split()[1])
-            else:
-                distrib = 0
-            
-            if 'gfn' in line:
+           
+            if 'gfn ' in line:
                 gfn = str(line.split()[1])
             
             if 'size' in line:
@@ -81,7 +82,7 @@ if input_file is not None:
             if 'MD' in line:
                 MD_method_and_cycle = str(line.split()[1:3])
             
-            if 'struct' in line:
+            if 'struct ' in line:
                 structure = str(line.split()[1])
 
             if 'fixstruct' in line:
@@ -141,8 +142,6 @@ coeff_min = 1.00
 coeff_max = 1.1
 steps = 0.1
 nbr_not_converged = 0
-
-check_surface = False
 
 if agermain2021 is not False:
     check_surface = True
@@ -210,9 +209,13 @@ if input_file is not None:
         else:
             size = size_partial
 
-        if distrib == 1:
-            method_selection = 'random'
+        if 'distrib' in globals():
+            if distrib == 1:
+                method_selection = 'random'
+            else:
+                method_selection = 'follow'
         else:
+            distrib = 0
             method_selection = 'follow'
 else:
     list_mol = np.array([mol, size])
@@ -962,6 +965,9 @@ while i < size:
         if nbr_not_converged > 10: 
             print('Grain building failed after too many converging attempt.')
             exit()
+        
+        if "input_building" in globals():
+            list_mol[np.where(list_mol == mol)[0][0],1] = int(list_mol[np.where(list_mol == mol)[0][0],1]) + 1
         continue
 
     if MD_method_and_cycle is not None: #Module for start the MD cycles
