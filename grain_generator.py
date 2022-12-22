@@ -26,7 +26,7 @@ parser.add_argument("-inp", "--input", help="Give the name of the input file fro
 parser.add_argument("-mol", "--molecule", help="If you want a grain with only one type of molecule.", type=str, default="H2O")
 parser.add_argument("-r", "--restart", help="If it is a restart and from where it is restarting", type=int)
 parser.add_argument("-md", "--MD", nargs='+', help="Molecular dynamics: Which method and every x molecule", type=str)
-parser.add_argument("-agermain2022", "--agermain2021", help="Produce a grain using the method described in Germain et al. 2022 to be submitted. Only needs -size.", action='store_true')
+parser.add_argument("-agermain2022", "--agermain2022", help="Produce a grain using the method described in Germain et al. 2022 to be submitted. Only needs -size.", action='store_true')
 parser.add_argument("-rand", "--random_law", help="Which rule to use for the random position of molecules", default="normal")
 parser.add_argument("-opt_cycle", "--optimisation_cycle", help="Number of molecules added before optimisation.", type=int, default="1")
 parser.add_argument("-final_gfn2", "--final_gfn2", help="A GFN2 optimisation will be done at the end of the building process.", default=False, action='store_true')
