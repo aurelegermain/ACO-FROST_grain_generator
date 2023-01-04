@@ -4,7 +4,7 @@ from copy import deepcopy
 import subprocess
 import numpy as np
 from scipy import sparse
-from ase import io, Atoms, neighborlist
+from ase import io, Atoms, neighborlist, geometry
 from ase.build import molecule
 from ase.data.pubchem import pubchem_atoms_search, pubchem_atoms_conformer_search
 import argparse
@@ -353,6 +353,65 @@ def barycentre(atoms):
     atoms.set_positions(new_positions)
     return atoms
 
+def molecule_closer(sphere, Atoms_to_add, distance_grain):
+    good_place = False
+    start_again = 0
+    while good_place!=True:
+        All_distances_from_grain = geometry.get_distances(Atoms_to_add.get_positions(), sphere.get_positions())[1]
+        id_mol, id_nearest = np.divmod(np.argmin(All_distances_from_grain),len(sphere))
+        mol_position = Atoms_to_add[id_mol].position
+        nearest_position = sphere[id_nearest].position
+
+        delta_a = np.sum(mol_position**2)
+        delta_b = -2*np.sum(mol_position*nearest_position)
+        delta_c = np.sum(nearest_position**2) - distance_grain**2
+        delta = delta_b**2 -4*delta_a*delta_c
+
+        if delta > 0:
+            t_0 = (-delta_b + np.sqrt(delta))/(2*delta_a)
+            t_1 = (-delta_b - np.sqrt(delta))/(2*delta_a)
+            mol_position_0 = np.array([t_0*mol_position[0], t_0*mol_position[1], t_0*mol_position[2]])
+            mol_position_1 = np.array([t_1*mol_position[0], t_1*mol_position[1], t_1*mol_position[2]])
+            d_mol_0 = np.sqrt(np.sum((mol_position_0)**2))
+            d_mol_1 = np.sqrt(np.sum((mol_position_1)**2))
+
+            if d_mol_0 > d_mol_1: 
+                diff_mol_position = mol_position_0 - mol_position
+            else:
+                diff_mol_position = mol_position_1 - mol_position
+        else:
+            delta_c_2 = [np.sum(nearest_position**2) - (i/10)**2 for i in range(20,40,1)]
+            delta_2 = [delta_b**2 -4*delta_a*delta_c_i for delta_c_i in delta_c_2]
+
+            if start_again > 5:
+                t_2_0 = (-delta_b + np.sqrt(np.abs(delta)))/(2*delta_a)
+                t_2_1 = (-delta_b - np.sqrt(np.abs(delta)))/(2*delta_a)
+            
+                mol_position_2_0 = np.array([t_2_0*mol_position[0], t_0*mol_position[1], t_0*mol_position[2]])
+                mol_position_2_1 = np.array([t_2_1*mol_position[0], t_1*mol_position[1], t_1*mol_position[2]])
+                d_mol_2_0 = np.sqrt(np.sum((mol_position_2_0)**2))
+                d_mol_2_1 = np.sqrt(np.sum((mol_position_2_1)**2))
+                if d_mol_2_0 < d_mol_2_1: 
+                    diff_mol_position = mol_position_2_0 - mol_position
+                else:
+                    diff_mol_position = mol_position_2_1 - mol_position
+            else:
+                t_2 = (-delta_b)/(2*delta_a)
+                mol_position_2 = np.array([t_2*mol_position[0], t_2*mol_position[1], t_2*mol_position[2]])
+                diff_mol_position = mol_position_2 - mol_position
+        Atoms_to_add_0 = deepcopy(Atoms_to_add)
+        Atoms_to_add.set_positions(Atoms_to_add.get_positions() + diff_mol_position)
+        list_min_distances_from_grain = [np.argmin(distances) for distances in All_distances_from_grain] + [np.argmin(All_distances_from_grain)]
+        All_distances_from_grain_1 = geometry.get_distances(Atoms_to_add.get_positions(), sphere.get_positions())[1]
+        
+        if ((np.amin(All_distances_from_grain_1) > distance_grain*0.95) and (np.amin(All_distances_from_grain_1) < distance_grain*1.05)) or start_again > 10:
+            good_place = True
+            #print(i, start_again, np.amin(All_distances_from_grain_1), delta)
+            return Atoms_to_add
+        else:
+            #print(i, start_again, np.amin(All_distances_from_grain_1), delta)
+            start_again += 1
+
 def molecule_positioning_simplified(atoms, name_atom_added, random_law):
     atoms2 = deepcopy(io.read('./' + name_atom_added + '_gfn' + gfn + '/' + name_atom_added + '.xyz'))
     barycentre(atoms2)
@@ -377,18 +436,8 @@ def molecule_positioning_simplified(atoms, name_atom_added, random_law):
 
         atoms2.set_positions(positions + position_mol)
 
-        i = 0
-        while np.amin(distances_ab(atoms2, atoms)) > distance * coeff_max or np.amin(distances_ab(atoms2, atoms)) < distance / coeff_min:
-            #print(i)
-            if np.amin(distances_ab(atoms2, atoms)) > distance * coeff_max:
-                i = i - 1
-            else:
-                i = i + 1
-            position_mol[0] = (radius + distance + i*steps)*np.sqrt(1 - theta**2)*np.cos(phi)
-            position_mol[1] = (radius + distance + i*steps)*np.sqrt(1 - theta**2)*np.sin(phi)
-            position_mol[2] = (radius + distance + i*steps)*theta
+        atoms2 = molecule_closer(atoms, atoms2, distance)
 
-            atoms2.set_positions(positions + position_mol)
     elif random_law == "sbiased":
         angle_mol = rng.random(3)*360
         atoms2.rotate(angle_mol[0], "x")
@@ -409,18 +458,8 @@ def molecule_positioning_simplified(atoms, name_atom_added, random_law):
 
         atoms2.set_positions(positions + position_mol)
 
-        i = 0
-        while np.amin(distances_ab(atoms2, atoms)) > distance * coeff_max or np.amin(distances_ab(atoms2, atoms)) < distance / coeff_min:
-            #print(i)
-            if np.amin(distances_ab(atoms2, atoms)) > distance * coeff_max:
-                i = i - 1
-            else:
-                i = i + 1
-            position_mol[0] = (radius + distance + i*steps)*np.cos(phi)*np.sin(theta)
-            position_mol[1] = (radius + distance + i*steps)*np.sin(phi)*np.sin(theta)
-            position_mol[2] = (radius + distance + i*steps)*np.cos(theta)
+        atoms2 = molecule_closer(atoms, atoms2, distance)
 
-            atoms2.set_positions(positions + position_mol)
     #elif random_law == "grid":
     elif random_law == "plane":
         angle_mol = rng.random(3)*360
@@ -441,19 +480,8 @@ def molecule_positioning_simplified(atoms, name_atom_added, random_law):
         position_mol[2] = (radius + distance)*np.cos(theta)
 
         atoms2.set_positions(positions + position_mol)
+        atoms2 = molecule_closer(atoms, atoms2, distance)
 
-        i = 0
-        while np.amin(distances_ab(atoms2, atoms)) > distance * coeff_max or np.amin(distances_ab(atoms2, atoms)) < distance / coeff_min:
-            #print(i)
-            if np.amin(distances_ab(atoms2, atoms)) > distance * coeff_max:
-                i = i - 1
-            else:
-                i = i + 1
-            position_mol[0] = (radius + distance + i*steps)*np.cos(phi)*np.sin(theta)
-            position_mol[1] = (radius + distance + i*steps)*np.sin(phi)*np.sin(theta)
-            position_mol[2] = (radius + distance + i*steps)*np.cos(theta)
-
-            atoms2.set_positions(positions + position_mol)
     elif random_law == "hollow":
         #distance = 2
         hollow_radius = 3
