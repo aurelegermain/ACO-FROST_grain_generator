@@ -387,8 +387,8 @@ def molecule_closer(sphere, Atoms_to_add, distance_grain):
                 t_2_0 = (-delta_b + np.sqrt(np.abs(delta)))/(2*delta_a)
                 t_2_1 = (-delta_b - np.sqrt(np.abs(delta)))/(2*delta_a)
             
-                mol_position_2_0 = np.array([t_2_0*mol_position[0], t_0*mol_position[1], t_0*mol_position[2]])
-                mol_position_2_1 = np.array([t_2_1*mol_position[0], t_1*mol_position[1], t_1*mol_position[2]])
+                mol_position_2_0 = np.array([t_2_0*mol_position[0], t_2_0*mol_position[1], t_2_0*mol_position[2]])
+                mol_position_2_1 = np.array([t_2_1*mol_position[0], t_2_1*mol_position[1], t_2_1*mol_position[2]])
                 d_mol_2_0 = np.sqrt(np.sum((mol_position_2_0)**2))
                 d_mol_2_1 = np.sqrt(np.sum((mol_position_2_1)**2))
                 if d_mol_2_0 < d_mol_2_1: 
