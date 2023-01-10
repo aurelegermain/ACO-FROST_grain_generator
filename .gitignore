@@ -6,3 +6,14 @@
 /test.py
 /test_input.py
 /sphere_random.xyz
+/cluster.xyz
+/movie.xyz
+/sphere*
+/xtbopt.xyz
+/.~lock.molecules_reactivity_network.csv#
+orca.sh
+input_orca_trj.xyz
+movie_gfn2.xyz
+orca.slurm
+/studies
+/test_spherical*
